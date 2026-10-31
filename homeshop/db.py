@@ -177,3 +177,27 @@ def channel_stats(conn: sqlite3.Connection, date_from: str = "", date_to: str = 
         args,
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def merge_page_broadcasts(conn: sqlite3.Connection, items: list[Broadcast]) -> int:
+    """저장 페이지에서 읽은 방송을 방송 단위(채널+시작 시각)로 합친다.
+
+    - 상품명까지 있는 방송: 기존 행을 지우고 새로 넣는다 (상세 정보가 최신).
+    - 시간표만 있는 방송(상품명 없음): 이미 저장된 행이 있으면 건드리지 않는다.
+      화면에 보이던 구간만 상세가 저장되므로, 여러 번 저장해도 상세가 사라지지 않게 한다.
+    저장(또는 갱신)한 건수를 돌려준다.
+    """
+    slots: dict[tuple[str, str], list[Broadcast]] = {}
+    for b in items:
+        slots.setdefault((b.channel_code, b.start_at.isoformat(timespec="minutes")), []).append(b)
+    to_save: list[Broadcast] = []
+    for (ch, start), group in slots.items():
+        detailed = any(b.product_name for b in group)
+        exists = conn.execute(
+            "SELECT 1 FROM broadcasts WHERE channel_code=? AND start_at=? LIMIT 1", (ch, start)
+        ).fetchone()
+        if not detailed and exists:
+            continue
+        conn.execute("DELETE FROM broadcasts WHERE channel_code=? AND start_at=?", (ch, start))
+        to_save.extend(group)
+    return upsert_broadcasts(conn, to_save)

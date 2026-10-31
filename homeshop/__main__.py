@@ -2,6 +2,7 @@
 
   python -m homeshop init-db
   python -m homeshop import-csv 편성표.csv
+  python -m homeshop import-page 저장한편성표.html [--site hmall]
   python -m homeshop collect --date 2026-10-31 [--channel gs --channel cj]
   python -m homeshop serve --port 8000
 """
@@ -11,7 +12,7 @@ import argparse
 import logging
 from datetime import date
 
-from . import adapters, collector, db, importer
+from . import adapters, collector, db, importer, pages
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,6 +24,10 @@ def main(argv: list[str] | None = None) -> int:
 
     imp = sub.add_parser("import-csv")
     imp.add_argument("path")
+
+    pg = sub.add_parser("import-page", help="브라우저로 저장한 편성표 페이지 가져오기")
+    pg.add_argument("paths", nargs="+")
+    pg.add_argument("--site", choices=pages.supported(), help="자동 인식이 안 될 때 지정")
 
     col = sub.add_parser("collect")
     col.add_argument("--date", default=date.today().isoformat())
@@ -51,6 +56,17 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "import-csv":
         n = db.upsert_broadcasts(conn, importer.read_csv(args.path))
         print(f"{n}건 저장")
+    elif args.cmd == "import-page":
+        for path in args.paths:
+            try:
+                items = pages.read_page(path, args.site)
+            except (pages.PageImportError, OSError) as e:
+                print(f"[실패] {path}: {e}")
+                continue
+            n = db.merge_page_broadcasts(conn, items)
+            detailed = sum(1 for b in items if b.product_name)
+            print(f"[저장] {path}: 방송 {len({(b.channel_code, b.start_at) for b in items})}건, "
+                  f"상품 상세 {detailed}건 (갱신 {n}행)")
     elif args.cmd == "collect":
         if not adapters.registered_codes():
             print("등록된 채널 어댑터가 없습니다. homeshop/adapters/ 에 어댑터를 추가하세요.")
