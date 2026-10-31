@@ -21,3 +21,7 @@ def get_adapter(code: str) -> type[ChannelAdapter] | None:
 
 def registered_codes() -> list[str]:
     return sorted(_REGISTRY)
+
+
+# 채널 어댑터 모듈을 불러와 등록한다 (각 모듈이 @register를 실행).
+from . import gongyoung, shoppingnt  # noqa: E402,F401
