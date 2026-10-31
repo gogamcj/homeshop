@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>홈쇼핑 편성 검색</title>
+<style>
+  :root { --bg:#f7f7f8; --card:#fff; --fg:#1d1d1f; --muted:#6b6b73; --line:#e3e3e8; --accent:#2f5bd3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141416; --card:#1e1e22; --fg:#ececf0; --muted:#9a9aa3; --line:#2e2e34; --accent:#7d9cff; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  header { padding:20px 16px 8px; max-width:1100px; margin:0 auto; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:13px; }
+  main { max-width:1100px; margin:0 auto; padding:8px 16px 40px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  input, select, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:7px 10px; }
+  input[type=search] { flex:1 1 220px; }
+  button { background:var(--accent); color:#fff; border:none; cursor:pointer; }
+  .meta { color:var(--muted); margin:14px 2px 6px; font-size:13px; }
+  .table { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+  table { width:100%; border-collapse:collapse; min-width:720px; }
+  th, td { padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .ch { display:inline-block; font-size:12px; padding:1px 7px; border-radius:99px; border:1px solid var(--line); white-space:nowrap; }
+  .empty { padding:30px; text-align:center; color:var(--muted); }
+  .pager { display:flex; gap:8px; justify-content:center; margin-top:12px; }
+  .pager button { background:var(--card); color:var(--fg); border:1px solid var(--line); }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>홈쇼핑 편성 검색</h1>
+  <div class="sub">채널별 방송 편성과 상품을 검색합니다. 판매수량·금액 추정은 다음 단계에서 추가됩니다.</div>
+</header>
+<main>
+  <form id="f">
+    <input type="search" name="q" placeholder="상품명, 브랜드, 방송명">
+    <select name="channel"><option value="">전체 채널</option></select>
+    <select name="category"><option value="">전체 카테고리</option></select>
+    <input type="date" name="date_from" aria-label="시작일">
+    <input type="date" name="date_to" aria-label="종료일">
+    <button type="submit">검색</button>
+  </form>
+  <div class="meta" id="meta"></div>
+  <div class="table">
+    <table>
+      <thead><tr><th>방송 시작</th><th>채널</th><th>방송/상품</th><th>브랜드</th><th>카테고리</th><th>분</th><th>판매가</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+  <div class="pager"><button id="prev" type="button">이전</button><button id="next" type="button">다음</button></div>
+</main>
+<script>
+const PAGE = 50;
+let offset = 0;
+const f = document.getElementById('f');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const won = n => n == null ? '' : n.toLocaleString('ko-KR') + '원';
+const mins = (a, b) => b ? Math.round((new Date(b) - new Date(a)) / 60000) : '';
+
+async function loadFilters() {
+  const [chs, cats] = await Promise.all([fetch('/api/channels').then(r => r.json()), fetch('/api/categories').then(r => r.json())]);
+  f.channel.insertAdjacentHTML('beforeend', chs.map(c => `<option value="${esc(c.code)}">${esc(c.name)}</option>`).join(''));
+  f.category.insertAdjacentHTML('beforeend', cats.map(c => `<option>${esc(c)}</option>`).join(''));
+}
+
+async function search() {
+  const p = new URLSearchParams(new FormData(f));
+  p.set('limit', PAGE); p.set('offset', offset);
+  const res = await fetch('/api/broadcasts?' + p);
+  const data = await res.json();
+  const tb = document.getElementById('rows');
+  if (!res.ok) { tb.innerHTML = `<tr><td colspan="7" class="empty">검색 조건을 확인해 주세요.</td></tr>`; return; }
+  document.getElementById('meta').textContent = `${data.total.toLocaleString('ko-KR')}건`;
+  tb.innerHTML = data.items.length ? data.items.map(b => `
+    <tr>
+      <td style="white-space:nowrap">${esc(b.start_at.replace('T', ' '))}</td>
+      <td><span class="ch">${esc(b.channel_name)}</span></td>
+      <td>${b.product_url ? `<a href="${esc(b.product_url)}" target="_blank" rel="noopener">${esc(b.product_name || b.title)}</a>` : esc(b.product_name || b.title)}
+          ${b.product_name && b.title !== b.product_name ? `<div class="sub">${esc(b.title)}</div>` : ''}</td>
+      <td>${esc(b.brand)}</td>
+      <td>${esc(b.category)}</td>
+      <td class="num">${mins(b.start_at, b.end_at)}</td>
+      <td class="num">${won(b.price)}</td>
+    </tr>`).join('') : `<tr><td colspan="7" class="empty">결과가 없습니다.</td></tr>`;
+  document.getElementById('prev').disabled = offset === 0;
+  document.getElementById('next').disabled = offset + PAGE >= data.total;
+}
+
+f.addEventListener('submit', e => { e.preventDefault(); offset = 0; search(); });
+document.getElementById('prev').onclick = () => { offset = Math.max(0, offset - PAGE); search(); };
+document.getElementById('next').onclick = () => { offset += PAGE; search(); };
+loadFilters().then(search);
+</script>
+</body>
+</html>
