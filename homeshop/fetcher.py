@@ -68,13 +68,21 @@ class PoliteFetcher:
                 self._sleep(wait)
         self._last[host] = self._clock()
 
-    def _request(self, url: str, check_robots: bool = True, **kw) -> httpx.Response:
+    def _request(
+        self, url: str, check_robots: bool = True, method: str = "GET", **kw
+    ) -> httpx.Response:
         if check_robots and not self.allowed(url):
             raise RobotsDisallowed(url)
         self._throttle(urlsplit(url).netloc)
-        return self.client.get(url, **kw)
+        return self.client.request(method, url, **kw)
 
     def get(self, url: str, **kw) -> httpx.Response:
         resp = self._request(url, **kw)
+        resp.raise_for_status()
+        return resp
+
+    def post(self, url: str, **kw) -> httpx.Response:
+        """편성표 화면이 POST로 데이터를 불러오는 채널용. robots.txt와 요청 간격은 GET과 같다."""
+        resp = self._request(url, method="POST", **kw)
         resp.raise_for_status()
         return resp

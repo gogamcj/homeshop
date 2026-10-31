@@ -19,7 +19,7 @@ pip install -r requirements-dev.txt
 python -m homeshop init-db
 python -m homeshop import-csv tests/fixtures/sample_schedule.csv   # 예시 데이터
 python -m homeshop serve                                            # http://127.0.0.1:8000
-pytest
+pytest          # pyproject.toml에 경로 설정이 있어 저장소 루트에서 바로 실행
 ```
 
 ## 구조
@@ -48,6 +48,28 @@ class GsAdapter(ChannelAdapter):
 ```
 
 `parse()`는 순수 함수로 두고, 실제 응답을 `tests/fixtures/`에 저장해 테스트합니다.
+
+## 채널별 수집 현황 (2026-10-31 확인)
+
+수집기는 `homeshop-collector` User-Agent를 그대로 밝히고 robots.txt를 따릅니다.
+그래서 일반 수집기(`User-agent: *`)를 막은 채널은 자동 수집하지 않고, CSV 가져오기나 제휴로 채웁니다.
+
+| 채널 | 상태 | 근거 |
+|---|---|---|
+| 공영쇼핑 `gongyoung` | ✅ 어댑터 있음 | `/tvshopping/` 허용. 편성·가격·누적 구매 수(`extra.order_count`) |
+| 쇼핑엔티 `shopnt` | ✅ 어댑터 있음 | robots.txt 없음. 편성·가격·연관 상품 |
+| CJ온스타일 `cj`, `cjplus` | ⛔ robots 금지 | `User-agent: *` → `Disallow: /` |
+| 롯데홈쇼핑 `lotte`, `lotteone` | ⛔ robots 금지 | `User-agent: *` → `Disallow: /` |
+| 현대홈쇼핑 `hmall`, `hmallplus` | ⛔ robots 금지 | `User-agent: *` → `Disallow: /` |
+| 홈앤쇼핑 `hns` | ⛔ robots 금지 | `User-agent: *` → `Disallow: /` |
+| NS홈쇼핑 `ns`, `nsplus` | ⛔ robots 금지 | 웹은 허용이나 편성 데이터를 주는 `mapi.nsmall.com`이 전체 금지 |
+| GS샵 `gs`, `gsmyshop` | ⛔ 접속 차단 | 수집기 UA에 오류 페이지 응답 |
+| KT알파쇼핑 `kshop` | ⛔ 접속 차단 | 403 차단 안내 |
+| 신세계라이브쇼핑 `shinsegae` | ⛔ 접속 차단 | 417 응답 |
+| SK스토아 `sk` | 🔍 조사 필요 | 접속 가능, 편성표 데이터 경로 미확인 |
+| W쇼핑 `wshop` | 🔍 조사 필요 | 연결 실패 |
+
+막힌 채널은 브라우저 UA 위장 등 우회를 하지 않습니다. 각 사에 데이터 제휴를 요청하거나, 허용된 경로(검색엔진 등)가 생기면 다시 확인합니다.
 
 ## CSV 형식
 
